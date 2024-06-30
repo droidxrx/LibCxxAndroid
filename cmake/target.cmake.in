@@ -1,0 +1,10 @@
+set(CMAKE_IMPORT_FILE_VERSION 1)
+
+set_target_properties(@LIBCXX_TARGET_NAME@ PROPERTIES
+  INTERFACE_LINK_LIBRARIES "${_IMPORT_PREFIX}/lib/@PROJECT_NAME@-${ANDROID_ABI}.a"
+  )
+
+list(APPEND _cmake_import_check_targets @LIBCXX_TARGET_NAME@ )
+list(APPEND _cmake_import_check_files_for_@LIBCXX_TARGET_NAME@ "${_IMPORT_PREFIX}/lib/@PROJECT_NAME@-${ANDROID_ABI}.a" )
+
+set(CMAKE_IMPORT_FILE_VERSION)

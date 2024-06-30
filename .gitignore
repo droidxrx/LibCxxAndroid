@@ -1,0 +1,8 @@
+/.vscode
+/build
+/dist
+/*.tar.*
+/*.js
+/llvm
+/*.zip
+/build.sh

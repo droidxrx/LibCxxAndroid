@@ -1,0 +1,10 @@
+
+set(_ANDROID_ABIS_ "armeabi-v7a" "arm64-v8a" "x86" "x86_64")
+
+if (NOT "${ANDROID_ABI}" IN_LIST _ANDROID_ABIS_)
+    message(FATAL_ERROR "Invalid ANDROID_ABI")
+endif()
+
+include ("${CMAKE_CURRENT_LIST_DIR}/@LIBCXX_TARGET_NAME@Targets.cmake")
+
+unset(_ANDROID_ABIS_)
