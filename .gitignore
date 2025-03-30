@@ -5,4 +5,5 @@
 /*.js
 /llvm
 /*.zip
+/.cache
 /build.sh
