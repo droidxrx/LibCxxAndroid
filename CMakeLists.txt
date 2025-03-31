@@ -1,54 +1,38 @@
-cmake_minimum_required(VERSION 3.13.4)
+cmake_minimum_required(VERSION 3.18)
 
-project(libcxx DESCRIPTION "Custom libcxx without exception and RTTI for Android." LANGUAGES CXX)
+project(c++ VERSION ${PROJECT_VERSION} DESCRIPTION "Custom lib++ combine libc++-abi without exception and RTTI for Android." LANGUAGES CXX)
+
+set(LIBC++_TARGET_NAME "${PROJECT_NAME}_static")
 
 option(IS_ROOT_PROJECT "" ON)
-option(LIBCXX_REBUILD ON)
+option(ENABLE_BUILD_WITH_NO_RTTI "" ON)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(_COMPILE_OPTIONS -fno-exceptions -fvisibility-global-new-delete-hidden -fvisibility=hidden -fvisibility-inlines-hidden)
+set(ANDROID_ABIS "armeabi-v7a" "arm64-v8a" "x86" "x86_64" CACHE STRING "List of Android ABIs to build for")
+set(LIBC++_COMPILE_OPTIONS -fno-exceptions -fvisibility-global-new-delete-hidden -fvisibility=hidden -fvisibility-inlines-hidden)
 
-macro(build_for_abi ABI SRC_DIR)
-    set(BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/${ABI})
-
-    file(REMOVE_RECURSE ${BUILD_DIR})
-    file(MAKE_DIRECTORY ${BUILD_DIR})
-
-    execute_process(
-        COMMAND ${CMAKE_COMMAND}
-        -H${CMAKE_SOURCE_DIR}
-        -B${BUILD_DIR}
-        -GNinja
-        -DCMAKE_TOOLCHAIN_FILE=/opt/NDK/25.0.8775105/build/cmake/android.toolchain.cmake
-        -DIS_ROOT_PROJECT=OFF
-        -DSRC_DIR=${SRC_DIR}
-        -DANDROID_ABI=${ABI}
-        -DANDROID_PLATFORM=24
-        -DANDROID_STL=none
-        -DCMAKE_BUILD_TYPE=Release
-    )
-
-    execute_process(COMMAND ${CMAKE_COMMAND} --build ${BUILD_DIR})
-endmacro()
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 if(NOT IS_ROOT_PROJECT)
-    file(GLOB_RECURSE libcxx_source ${SRC_DIR}/*.cpp)
-    file(GLOB_RECURSE libcxxabi_source ${SRC_DIR}/libcxxabi/*.cpp)
+    file(GLOB_RECURSE libc++_source ${SRC_DIR}/*.cpp)
+    file(GLOB_RECURSE libc++abi_source ${SRC_DIR}/libcxxabi/*.cpp)
 
-    add_library(${PROJECT_NAME} STATIC ${libcxx_source})
+    add_library(${PROJECT_NAME} STATIC ${libc++_source})
+    list(REMOVE_ITEM libc++_source ${libc++abi_source})
 
-    list(REMOVE_ITEM libcxx_source ${libcxxabi_source})
-    set_source_files_properties(${libcxx_source} PROPERTIES COMPILE_OPTIONS -fno-rtti)
+    if(ENABLE_BUILD_WITH_NO_RTTI)
+        set_source_files_properties(${libc++_source} PROPERTIES COMPILE_OPTIONS -fno-rtti)
+    endif()
 
-    target_include_directories(${PROJECT_NAME} PRIVATE ${SRC_DIR}/../include)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${SRC_DIR} ${SRC_DIR}/filesystem)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${SRC_DIR}/../include ${SRC_DIR} ${SRC_DIR}/filesystem)
+    target_compile_options(${PROJECT_NAME} PUBLIC ${LIBC++_COMPILE_OPTIONS})
+    target_compile_options(${PROJECT_NAME} PRIVATE "-g0")
 
-    target_compile_options(${PROJECT_NAME} PRIVATE ${_COMPILE_OPTIONS})
-
-    target_compile_definitions(${PROJECT_NAME} PRIVATE
+    target_compile_definitions(${PROJECT_NAME} PUBLIC
         _LIBCPP_BUILDING_LIBRARY
         _LIBCPP_DISABLE_NEW_DELETE_DEFINITIONS
         __STDC_FORMAT_MACROS
@@ -59,104 +43,121 @@ if(NOT IS_ROOT_PROJECT)
         _LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS
     )
 
-    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "cxx-${ANDROID_ABI}")
+    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${LIBC++_TARGET_NAME}")
 
-    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_STRIP} --strip-debug $<TARGET_FILE:${PROJECT_NAME}>
-    )
+    if(ENABLE_BUILD_WITH_NO_RTTI)
+        install(TARGETS ${PROJECT_NAME} ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}/${ANDROID_ABI}-no-rtti")
+    else()
+        install(TARGETS ${PROJECT_NAME} ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}/${ANDROID_ABI}")
+    endif()
+
     return()
 endif()
 
-set(ANDROID_ABIS "armeabi-v7a" "arm64-v8a" "x86" "x86_64")
+include(ExternalProject)
 
-if(LIBCXX_REBUILD)
-    foreach(ABI ${ANDROID_ABIS})
-        build_for_abi(${ABI} ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    endforeach()
-endif()
-
-set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/dist)
-if(EXISTS ${CMAKE_INSTALL_PREFIX})
-    file(REMOVE_RECURSE ${CMAKE_INSTALL_PREFIX})
-endif()
-
-include(GNUInstallDirs)
-
-set(LIBCXX_TARGET_NAME                             LibCxxAndroid)
-set(LIBCXX_CONFIG_INSTALL_DIR                      "${CMAKE_INSTALL_LIBDIR}/cmake/${LIBCXX_TARGET_NAME}" CACHE INTERNAL "")
-set(LIBCXX_INCLUDE_INSTALL_DIR                     "${CMAKE_INSTALL_INCLUDEDIR}")
-set(LIBCXX_LIB_INSTALL_DIR                         "${CMAKE_INSTALL_LIBDIR}")
-set(LIBCXX_TARGETS_EXPORT_NAME                     "${LIBCXX_TARGET_NAME}Targets")
-set(LIBCXX_CMAKE_CONFIG_TEMPLATE                   "cmake/config.cmake.in")
-set(LIBCXX_CMAKE_TARGET_TEMPLATE                   "cmake/target.cmake.in")
-set(LIBCXX_CMAKE_CONFIG_DIR                        "${CMAKE_CURRENT_BINARY_DIR}")
-set(LIBCXX_CMAKE_PROJECT_CONFIG_FILE               "${LIBCXX_CMAKE_CONFIG_DIR}/${LIBCXX_TARGET_NAME}Config.cmake")
-set(LIBCXX_CMAKE_PROJECT_TARGETS_FILE              "${LIBCXX_CMAKE_CONFIG_DIR}/${LIBCXX_TARGET_NAME}Targets.cmake")
-set(LIBCXX_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE  "${LIBCXX_CMAKE_CONFIG_DIR}/${LIBCXX_TARGET_NAME}Targets-Abi.cmake")
-set(LIBCXX_INCLUDE_BUILD_DIR                       "${PROJECT_SOURCE_DIR}/include/")
-set(LIBCXX_COMPILE_OPTIONS                         ${_COMPILE_OPTIONS} -fno-rtti)
-set(LIBCXX_LIBRARY_BUILD)
+set(EXTERNAL_PROJECTS)
 
 foreach(ABI ${ANDROID_ABIS})
-    list(APPEND LIBCXX_LIBRARY_BUILD "${CMAKE_CURRENT_BINARY_DIR}/${ABI}/libcxx-${ABI}.a")
+    list(APPEND EXTERNAL_PROJECTS "${PROJECT_NAME}_${ABI}" "${PROJECT_NAME}_${ABI}_no_rtti")
+    ExternalProject_Add("${PROJECT_NAME}_${ABI}"
+        PREFIX "${CMAKE_BINARY_DIR}/${ABI}"
+        SOURCE_DIR "${PROJECT_SOURCE_DIR}"
+        CMAKE_ARGS
+        --fresh
+        -DIS_ROOT_PROJECT=OFF
+        -DENABLE_BUILD_WITH_NO_RTTI=OFF
+        -DANDROID_ABI=${ABI}
+        -DANDROID_PLATFORM=${ANDROID_PLATFORM}
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+        -DANDROID_STL=none
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_C_COMPILER_LAUNCHER=/usr/bin/ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/ccache
+        -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+        -DSRC_DIR=${PROJECT_SOURCE_DIR}/src
+    )
+    ExternalProject_Add("${PROJECT_NAME}_${ABI}_no_rtti"
+        PREFIX "${CMAKE_BINARY_DIR}/${ABI}_no_rtti"
+        SOURCE_DIR "${PROJECT_SOURCE_DIR}"
+        CMAKE_ARGS
+        --fresh
+        -DIS_ROOT_PROJECT=OFF
+        -DENABLE_BUILD_WITH_NO_RTTI=ON
+        -DANDROID_ABI=${ABI}
+        -DANDROID_PLATFORM=${ANDROID_PLATFORM}
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+        -DANDROID_STL=none
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_C_COMPILER_LAUNCHER=/usr/bin/ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/ccache
+        -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+        -DSRC_DIR=${PROJECT_SOURCE_DIR}/src
+    )
 endforeach()
 
-add_library(${LIBCXX_TARGET_NAME} INTERFACE)
-target_compile_options(${LIBCXX_TARGET_NAME} INTERFACE ${LIBCXX_COMPILE_OPTIONS})
+set(LIBC++_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}" CACHE INTERNAL "")
+set(LIBC++_INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_INCLUDEDIR}")
+set(LIBC++_LIB_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}")
+set(LIBC++_TARGETS_EXPORT_NAME "${PROJECT_NAME}Targets")
+set(LIBC++_CMAKE_CONFIG_TEMPLATE "${PROJECT_SOURCE_DIR}/cmake/config.cmake.in")
+set(LIBC++_CMAKE_TARGET_TEMPLATE "${PROJECT_SOURCE_DIR}/cmake/target-static.cmake.in")
+set(LIBC++_CMAKE_TARGET_TEMPLATE_NO_RTTI "${PROJECT_SOURCE_DIR}/cmake/target-static_no_rtti.cmake.in")
+set(LIBC++_CMAKE_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+set(LIBC++_CMAKE_PROJECT_VERSION_FILE "${LIBC++_CMAKE_CONFIG_DIR}/${PROJECT_NAME}ConfigVersion.cmake")
+set(LIBC++_CMAKE_PROJECT_CONFIG_FILE "${LIBC++_CMAKE_CONFIG_DIR}/${PROJECT_NAME}Config.cmake")
+set(LIBC++_CMAKE_PROJECT_TARGETS_FILE "${LIBC++_CMAKE_CONFIG_DIR}/${LIBC++_TARGETS_EXPORT_NAME}.cmake")
+set(LIBC++_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE "${LIBC++_CMAKE_CONFIG_DIR}/${LIBC++_TARGETS_EXPORT_NAME}-static.cmake")
+set(LIBC++_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE_NO_RTTI "${LIBC++_CMAKE_CONFIG_DIR}/${LIBC++_TARGETS_EXPORT_NAME}-static_no_rtti.cmake")
+set(LIBC++_INCLUDE_BUILD_DIR "${PROJECT_SOURCE_DIR}/include/")
 
-target_include_directories(
-    ${LIBCXX_TARGET_NAME} INTERFACE
-    $<BUILD_INTERFACE:${LIBCXX_INCLUDE_BUILD_DIR}>
+add_library(static INTERFACE)
+add_library(static_no_rtti INTERFACE)
+target_compile_options(static INTERFACE ${LIBC++_COMPILE_OPTIONS})
+target_compile_options(static_no_rtti INTERFACE ${LIBC++_COMPILE_OPTIONS} -fno-rtti)
+target_include_directories(static INTERFACE $<INSTALL_INTERFACE:${LIBC++_INCLUDE_INSTALL_DIR}>)
+target_include_directories(static_no_rtti INTERFACE $<INSTALL_INTERFACE:${LIBC++_INCLUDE_INSTALL_DIR}>)
+add_dependencies(static ${EXTERNAL_PROJECTS})
+add_dependencies(static_no_rtti static)
+
+# Generate config files
+configure_package_config_file(${LIBC++_CMAKE_CONFIG_TEMPLATE} ${LIBC++_CMAKE_PROJECT_CONFIG_FILE}
+    INSTALL_DESTINATION ${LIBC++_CMAKE_CONFIG_DIR}
 )
 
-include(CMakePackageConfigHelpers)
-
-configure_file(
-    ${LIBCXX_CMAKE_CONFIG_TEMPLATE}
-    ${LIBCXX_CMAKE_PROJECT_CONFIG_FILE}
-    @ONLY
+configure_file(${LIBC++_CMAKE_TARGET_TEMPLATE} ${LIBC++_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE}
+    @ONLY NEWLINE_STYLE LF
 )
 
-configure_file(
-    ${LIBCXX_CMAKE_TARGET_TEMPLATE}
-    ${LIBCXX_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE}
-    @ONLY
+configure_file(${LIBC++_CMAKE_TARGET_TEMPLATE_NO_RTTI} ${LIBC++_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE_NO_RTTI}
+    @ONLY NEWLINE_STYLE LF
+)
+
+write_basic_package_version_file(
+    ${LIBC++_CMAKE_PROJECT_VERSION_FILE}
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+
+# Install config file
+install(
+    FILES ${LIBC++_CMAKE_PROJECT_CONFIG_FILE} ${LIBC++_CMAKE_PROJECT_VERSION_FILE} ${LIBC++_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE} ${LIBC++_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE_NO_RTTI}
+    DESTINATION ${LIBC++_CONFIG_INSTALL_DIR}
+)
+
+# Install include headers
+install(
+    DIRECTORY ${LIBC++_INCLUDE_BUILD_DIR}
+    DESTINATION ${LIBC++_INCLUDE_INSTALL_DIR}
 )
 
 install(
-    DIRECTORY ${LIBCXX_INCLUDE_BUILD_DIR}
-    DESTINATION ${LIBCXX_INCLUDE_INSTALL_DIR}
+    TARGETS static static_no_rtti
+    EXPORT ${LIBC++_TARGETS_EXPORT_NAME}
 )
 
 install(
-    FILES ${LIBCXX_CMAKE_PROJECT_TARGETS_ANDROID_ABI_FILE}
-    DESTINATION ${LIBCXX_CONFIG_INSTALL_DIR}
+    EXPORT ${LIBC++_TARGETS_EXPORT_NAME}
+    DESTINATION ${LIBC++_CONFIG_INSTALL_DIR}
+    NAMESPACE ${PROJECT_NAME}::
 )
-
-install(
-    FILES ${LIBCXX_CMAKE_CONFIG_TEMPLATE} ${LIBCXX_CMAKE_PROJECT_CONFIG_FILE}
-    DESTINATION ${LIBCXX_CONFIG_INSTALL_DIR}
-)
-
-install(
-    FILES ${LIBCXX_LIBRARY_BUILD}
-    DESTINATION ${LIBCXX_LIB_INSTALL_DIR}
-)
-
-export(
-    TARGETS ${LIBCXX_TARGET_NAME}
-    FILE ${LIBCXX_CMAKE_PROJECT_TARGETS_FILE}
-)
-
-install(
-    TARGETS ${LIBCXX_TARGET_NAME}
-    EXPORT ${LIBCXX_TARGETS_EXPORT_NAME}
-    INCLUDES DESTINATION ${LIBCXX_INCLUDE_INSTALL_DIR}
-)
-
-install(
-    EXPORT ${LIBCXX_TARGETS_EXPORT_NAME}
-    DESTINATION ${LIBCXX_CONFIG_INSTALL_DIR}
-)
-
-message(STATUS "${CMAKE_MINIMUM_REQUIRED_VERSION}")
