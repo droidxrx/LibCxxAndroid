@@ -1,0 +1,10 @@
+set(CMAKE_IMPORT_FILE_VERSION 1)
+
+set_target_properties(@PROJECT_NAME@::static_no_rtti PROPERTIES
+    INTERFACE_LINK_LIBRARIES "${_IMPORT_PREFIX}/lib/${ANDROID_ABI}-no-rtti/libc++_static.a"
+)
+
+list(APPEND _cmake_import_check_targets @PROJECT_NAME@::static_no_rtti )
+list(APPEND _cmake_import_check_files_for_@PROJECT_NAME@::static_no_rtti "${_IMPORT_PREFIX}/lib/${ANDROID_ABI}-no-rtti/libc++_static.a")
+
+set(CMAKE_IMPORT_FILE_VERSION)
