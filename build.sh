@@ -6,7 +6,7 @@ export CCACHE_DIR=${SCRIPTDIR}/.cache
 CMAKE_BUILD_DIR="$SCRIPTDIR/build"
 CMAKE_INSTALL_PREFIX="$SCRIPTDIR/dist"
 CMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake
-PROJECT_VERSION="0.0.2"
+OUTPUT_ARCHIVE="$SCRIPTDIR/LibC++Android.tar.gz"
 
 build_lib() {
     rm -rf "$CMAKE_BUILD_DIR" "$CMAKE_INSTALL_PREFIX"
@@ -14,7 +14,6 @@ build_lib() {
     cmake -G "Ninja" -S $SCRIPTDIR -B "$CMAKE_BUILD_DIR" \
         -DCMAKE_TOOLCHAIN_FILE="${CMAKE_TOOLCHAIN_FILE}" \
         -DANDROID_PLATFORM="24" \
-        -DPROJECT_VERSION="${PROJECT_VERSION}" \
         -DANDROID_STL="none" \
         -DCMAKE_BUILD_TYPE="Release" \
         -DCMAKE_SYSTEM_NAME="Android" \
@@ -35,3 +34,8 @@ build_lib() {
 cd $SCRIPTDIR
 
 build_lib
+
+cd $CMAKE_INSTALL_PREFIX
+
+rm -rf $OUTPUT_ARCHIVE
+GZIP=-9 tar -czf $OUTPUT_ARCHIVE ./
